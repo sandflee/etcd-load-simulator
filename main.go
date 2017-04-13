@@ -15,7 +15,7 @@
 package main
 
 import (
-	"github.com/coreos/etcd/cmd/tools/simulate/cmd"
+	"github.com/sandflee/etcd-load-simulator/cmd"
 	"fmt"
 	"os"
 )
