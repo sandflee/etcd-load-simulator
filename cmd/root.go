@@ -31,6 +31,7 @@ var (
 	delQps	 uint
 	getQps	 uint
 	quorumRead bool
+	benchMode bool
 	preCreateNum uint
 )
 
@@ -44,6 +45,7 @@ func init() {
 	RootCmd.PersistentFlags().UintVar(&delQps, "delQps", 0, "")
 	RootCmd.PersistentFlags().UintVar(&getQps, "getQps", 0, "")
 	RootCmd.PersistentFlags().BoolVar(&quorumRead, "quorumRead", true, "")
+	RootCmd.PersistentFlags().BoolVar(&benchMode, "benchMode", false, "if enabled, will try to send op as quickly as possible")
 	RootCmd.PersistentFlags().UintVar(&preCreateNum, "preCreate", 1000, "")
 }
 

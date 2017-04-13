@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"sort"
 )
 
 var (
@@ -25,14 +26,29 @@ type generator struct {
 
 type timeChecker struct {
 	interval time.Duration
-	lastTime time.Time
+	exceptTime time.Time
+}
+
+func newGenerator(qps uint, op GetOp) *generator {
+	g := generator{}
+	g.timeChecker = &timeChecker{}
+	g.timeChecker.interval = time.Second/time.Duration(qps)
+	g.op = op
+	return &g
+}
+
+func (g * generator) start(benchMode bool) {
+	if benchMode {
+		g.interval = g.interval/100000
+	}
+	g.exceptTime = time.Now()
 }
 
 func (t *timeChecker) checkAndUpdate(now time.Time) bool {
-	if now.Before(t.lastTime.Add(t.interval)) {
+	if now.Before(t.exceptTime) {
 		return false
 	}
-	t.lastTime = now
+	t.exceptTime = t.exceptTime.Add(t.interval)
 	return true
 }
 
@@ -68,7 +84,6 @@ func updateOp() *Op {
 	return &Op{update:&u}
 }
 
-
 func createOp() *Op {
 	write_index = write_index + 1
 	key := prefix + strconv.Itoa(write_index)
@@ -85,37 +100,25 @@ func (g *OpGenerator) Run (opChan chan<- *Op)  {
 	s2 := rand.NewSource(time.Now().Unix())
 	r = rand.New(s2)
 
-	actives := []generator{}
+	actives := []*generator{}
 	if updateQps > 0 {
-		a := generator{}
-		a.timeChecker = &timeChecker{}
-		a.timeChecker.interval = time.Second/time.Duration(updateQps)
-		a.op = updateOp
-		actives = append(actives, a)
+		g := newGenerator(updateQps, updateOp)
+		actives = append(actives, g)
 	}
 
 	if createQps > 0 {
-		a := generator{}
-		a.timeChecker = &timeChecker{}
-		a.timeChecker.interval = time.Second/time.Duration(createQps)
-		a.op = createOp
-		actives = append(actives, a)
+		g := newGenerator(createQps, createOp)
+		actives = append(actives, g)
 	}
 
 	if listQps > 0 {
-		a := generator{}
-		a.timeChecker = &timeChecker{}
-		a.timeChecker.interval = time.Second/time.Duration(listQps)
-		a.op = listOp
-		actives = append(actives, a)
+		g := newGenerator(listQps, listOp)
+		actives = append(actives, g)
 	}
 
 	if getQps > 0 {
-		a := generator{}
-		a.timeChecker = &timeChecker{}
-		a.timeChecker.interval = time.Second/time.Duration(getQps)
-		a.op = getOp
-		actives = append(actives, a)
+		g := newGenerator(getQps, listOp)
+		actives = append(actives, g)
 	}
 
 	// initial data
@@ -124,17 +127,55 @@ func (g *OpGenerator) Run (opChan chan<- *Op)  {
 		opChan <- op
 	}
 
-	c := time.Tick(time.Millisecond)
+	for _, g := range actives {
+		g.start(benchMode)
+	}
+
 	for {
-		select {
-		case <-c:
-			now := time.Now()
-			for _, g := range actives {
-				if g.checkAndUpdate(now) {
-					op := g.op()
-					opChan <- op
-				}
+		now := time.Now()
+		if g, nextTime := getActiveOp(actives, now); g!= nil {
+			//fmt.Printf("%+v,%+v,%+v,\n",g.exceptTime, g.op,nextTime)
+			opChan <- g.op()
+			lastest := time.Now()
+			duration := lastest.Sub(now)
+			if duration < nextTime {
+				time.Sleep(nextTime - duration)
 			}
+		} else {
+			time.Sleep(nextTime)
 		}
 	}
+}
+
+
+func getActiveOp(actives glist, now time.Time) (*generator, time.Duration) {
+	if len(actives) == 0 {
+		return nil, time.Second
+	}
+	sort.Sort(actives)
+	op := actives[0]
+	if op.checkAndUpdate(now) {
+		sort.Sort(actives)
+		if actives[0].exceptTime.After(now) {
+			return op, actives[0].exceptTime.Sub(now)
+		} else {
+			return op, time.Nanosecond
+		}
+	} else {
+		return nil, op.exceptTime.Sub(now)
+	}
+}
+
+type glist []*generator
+
+func (g glist) Len() int {
+	return len(g)
+}
+
+func (g glist) Swap(i,j int) {
+	g[i], g[j] = g[j], g[i]
+}
+
+func (g glist) Less(i,j int) bool {
+	return g[i].exceptTime.Before(g[j].exceptTime)
 }

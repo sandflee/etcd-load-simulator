@@ -75,7 +75,7 @@ func (c *client) Run (requests <-chan *Op) {
 	for op := range requests {
 		if op.del != nil {
 			if _, err := c.c.KV.Delete(context, op.del.key); err != nil {
-				fmt.Errorf("delete failed",err)
+				fmt.Printf("delete failed,%+v\n",err)
 			}
 		}
 
@@ -85,7 +85,7 @@ func (c *client) Run (requests <-chan *Op) {
 				opts = append(opts, clientv3.WithSerializable())
 			}
 			if _, err := c.c.KV.Get(context, op.get.key, opts...); err != nil {
-				fmt.Errorf("get failed", err)
+				fmt.Printf("get failed,%+v\n", err)
 			}
 		}
 
@@ -97,7 +97,7 @@ func (c *client) Run (requests <-chan *Op) {
 			opts = append(opts, clientv3.WithPrefix())
 			if _, err := c.c.Get(context, op.list.prefix, opts...); err != nil {
 				etcd_counter.list(false)
-				fmt.Errorf("list failed", err)
+				fmt.Printf("list failed,%+v\n", err)
 			} else {
 				etcd_counter.list(true)
 			}
@@ -107,12 +107,12 @@ func (c *client) Run (requests <-chan *Op) {
 			resp, err := c.c.KV.Get(context, op.update.key)
 			if err != nil {
 				etcd_counter.update(false)
-				fmt.Errorf("update failed while do get,\n",err)
+				fmt.Printf("update failed while do get,%+v\n",err)
 				continue
 			}
 			if len(resp.Kvs) == 0 {
 				etcd_counter.update(false)
-				fmt.Errorf("update failed while do get empty\n",err)
+				fmt.Printf("update failed while do get empty,%+v\n",err)
 				continue
 			}
 			modIndex := resp.Kvs[0].ModRevision
@@ -126,13 +126,13 @@ func (c *client) Run (requests <-chan *Op) {
 
 			if err != nil {
 				etcd_counter.update(false)
-				fmt.Errorf("update failed ,",err)
+				fmt.Printf("update failed ,%+v\n",err)
 				continue
 			}
 
 			if !txnResp.Succeeded {
 				etcd_counter.update(false)
-				fmt.Errorf("update not succ,", op.update.key)
+				fmt.Printf("update not succ, %s\n", op.update.key)
 				continue
 			}
 			etcd_counter.update(true)
@@ -148,7 +148,7 @@ func (c *client) Run (requests <-chan *Op) {
 			).Commit()
 			if err != nil {
 				etcd_counter.create(false)
-				fmt.Errorf("put error,",err)
+				fmt.Printf("put error,%+v\n",err)
 			} else {
 				etcd_counter.create(true)
 			}
